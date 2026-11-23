@@ -1,5 +1,5 @@
 // After `wrangler deploy`, replace YOUR-SUBDOMAIN with your workers.dev subdomain.
-var SIGNUP_ENDPOINT = "https://tarmactime-signup.YOUR-SUBDOMAIN.workers.dev/";
+var SIGNUP_ENDPOINT = "https://tarmactime-signup.tarmactime.workers.dev/";
 
 (function () {
   var form = document.getElementById("join-form");
