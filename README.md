@@ -2,46 +2,70 @@
 
 A one-page site for [Tarmac Time](https://tarmactime.com), a weekly letter for pilots and aviation professionals in business aviation.
 
-The page is static HTML and CSS. Joining the list happens on this site only. The form posts to `/api/subscribe`, and that Vercel function creates the subscription with beehiiv’s API. The API key stays on the server.
+The page is static HTML and CSS. GitHub Pages serves it from the root of `main`. Joining the list posts to a Cloudflare Worker, which creates the beehiiv subscription. The API key and publication id are Worker secrets and are not in this repository.
 
-## Run locally
+## Worker URL
 
-From this directory:
+The form reads one constant at the top of `join.js`:
+
+```javascript
+var SIGNUP_ENDPOINT = "https://tarmactime-signup.YOUR-SUBDOMAIN.workers.dev/";
+```
+
+After `wrangler deploy`, replace `YOUR-SUBDOMAIN` with the workers.dev subdomain it prints.
+
+## GitHub Pages
+
+In the repository on GitHub, open Settings, then Pages.
+
+- Source: Deploy from a branch
+- Branch: `main`
+- Folder: `/` (root)
+
+`CNAME` sets the custom domain to `tarmactime.com`. After the DNS records below exist, turn on Enforce HTTPS.
+
+## Worker
+
+From the `worker` directory:
 
 ```bash
-python3 -m http.server 41731
+npx wrangler deploy
+npx wrangler secret put BEEHIIV_API_KEY
+npx wrangler secret put BEEHIIV_PUBLICATION_ID
 ```
 
-Then open http://127.0.0.1:41731
+The worker name in `worker/wrangler.toml` is `tarmactime-signup`. When the publication id prompt appears, enter:
 
-That serves the page. The signup function runs on Vercel, or locally with the Vercel CLI (`vercel dev`) once the environment variables below are set.
-
-## Signup environment
-
-Set both variables in the Vercel project. Do not commit the API key.
-
-```
-BEEHIIV_PUBLICATION_ID=pub_90708af4-4ca0-4fe3-a057-1d9707d0aa06
-BEEHIIV_API_KEY=
+```text
+pub_90708af4-4ca0-4fe3-a057-1d9707d0aa06
 ```
 
-`BEEHIIV_API_KEY` is a beehiiv API key with permission to create subscriptions. The function reads it only from the environment and sends it as `Authorization: Bearer …` to `POST https://api.beehiiv.com/v2/publications/{BEEHIIV_PUBLICATION_ID}/subscriptions`.
+`BEEHIIV_API_KEY` is a beehiiv key that can create subscriptions. Do not commit either value.
 
-The request body uses beehiiv’s current field names: `email`, `reactivate_existing: false`, `send_welcome_email: true`, `utm_source: tarmactime.com`, `referring_site: https://tarmactime.com`, and, when a first name is given, `custom_fields: [{ name: "first_name", value }]`. The publication already has a `first_name` custom field. Unknown field names are ignored by beehiiv; this function does not pass beehiiv’s error text back to the visitor.
+The worker sends `reactivate_existing: false`, `send_welcome_email: true`, `utm_source: tarmactime.com`, and `referring_site: https://tarmactime.com`. A first name is sent as `custom_fields: [{ name: "first_name", value }]`. A filled honeypot is ignored. Visitors see a short generic error, not beehiiv’s own message.
+
+Browsers may call the worker only from `https://tarmactime.com` and `https://www.tarmactime.com`.
+
+## DNS
+
+These records belong at the DNS host. Nothing in this repository changes DNS.
+
+Apex `A` records, all four:
+
+- `185.199.108.153`
+- `185.199.109.153`
+- `185.199.110.153`
+- `185.199.111.153`
+
+`www` is a `CNAME` to `andrew-jb6.github.io`.
 
 ## Test
 
 ```bash
-node --test
+node --test worker/test/subscribe.test.js
 ```
 
-The test mocks `fetch`. It does not call beehiiv.
-
-## Deploy
-
-Connect the repository in Vercel and leave the framework preset on “Other”. Static files are served from the project root. `api/subscribe.js` is the serverless function. `vercel.json` sets cache and security headers.
-
-Do not change DNS from the site files. Point tarmactime.com at the project in Vercel’s domain settings when you want the public domain to move.
+The test mocks `fetch`. It does not call beehiiv and does not subscribe an address.
 
 ## What’s on the page
 

@@ -1,3 +1,6 @@
+// After `wrangler deploy`, replace YOUR-SUBDOMAIN with your workers.dev subdomain.
+var SIGNUP_ENDPOINT = "https://tarmactime-signup.YOUR-SUBDOMAIN.workers.dev/";
+
 (function () {
   var form = document.getElementById("join-form");
   var status = document.getElementById("join-status");
@@ -45,7 +48,7 @@
     button.textContent = "Joining";
     status.hidden = true;
 
-    fetch("/api/subscribe", {
+    fetch(SIGNUP_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({

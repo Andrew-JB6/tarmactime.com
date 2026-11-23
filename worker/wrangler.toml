@@ -1,0 +1,7 @@
+name = "tarmactime-signup"
+main = "src/index.js"
+compatibility_date = "2026-11-22"
+
+# Set both with `wrangler secret put`. Do not commit the values.
+#   BEEHIIV_API_KEY
+#   BEEHIIV_PUBLICATION_ID
