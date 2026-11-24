@@ -1,6 +1,6 @@
 # Tarmac Time
 
-A one-page site for [Tarmac Time](https://tarmactime.com), a weekly letter for pilots and aviation professionals in business aviation.
+A one-page site for [Tarmac Time](https://tarmactime.com), a letter, sent every other week, for pilots and aviation professionals in business aviation.
 
 The page is static HTML and CSS. GitHub Pages serves it from the root of `main`. Joining the list posts to a Cloudflare Worker, which creates the beehiiv subscription. The API key and publication id are Worker secrets and are not in this repository.
 
@@ -73,7 +73,7 @@ The tests mock `fetch`. They do not call beehiiv and do not subscribe an address
 
 ## What’s on the page
 
-Each week the letter carries three things:
+Each issue carries three things:
 
 - Business Aviation Update
 - Pilot Jobs, sorted by low, middle, and high time
