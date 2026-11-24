@@ -59,13 +59,17 @@ Apex `A` records, all four:
 
 `www` is a `CNAME` to `andrew-jb6.github.io`.
 
+## Latest issue
+
+`https://tarmactime.com/latest` is a short address for the newest published issue. GitHub Pages serves `latest/index.html`, which sends people to the Cloudflare Worker at `/latest`. The worker looks up the newest confirmed beehiiv post that is already live on the web and redirects there. If that lookup fails, it sends people to `https://tarmactime.beehiiv.com/`.
+
 ## Test
 
 ```bash
-node --test worker/test/subscribe.test.js
+node --test worker/test/*.js
 ```
 
-The test mocks `fetch`. It does not call beehiiv and does not subscribe an address.
+The tests mock `fetch`. They do not call beehiiv and do not subscribe an address.
 
 ## What’s on the page
 
