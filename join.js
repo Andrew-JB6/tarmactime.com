@@ -61,6 +61,14 @@ var SIGNUP_ENDPOINT = "https://tarmactime-signup.tarmactime.workers.dev/";
         if (!response.ok) {
           throw new Error("request failed");
         }
+        return response.json().catch(function () {
+          return {};
+        });
+      })
+      .then(function (data) {
+        if (data && data.token && window.TarmacGate) {
+          window.TarmacGate.setToken(data.token);
+        }
         section.classList.add("is-done");
         showStatus("You're on the list.", "success");
         status.focus();

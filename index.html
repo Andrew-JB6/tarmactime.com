@@ -50,6 +50,8 @@
   <body>
     <a class="skip" href="#join">Skip to joining the list</a>
 
+    <div class="page">
+    <div class="primary">
     <header class="wrap brand">
       <div class="brand-lockup" role="img" aria-label="Tarmac Time, business aviation careers">
         <img
@@ -131,10 +133,21 @@
         </form>
       </section>
     </main>
+    </div>
+
+    <aside class="issues" id="issues" aria-labelledby="issues-title">
+      <h2 id="issues-title">Past issues</h2>
+      <p class="issues-note">Free to read when you join the list.</p>
+      <ol class="issue-list" id="issue-list" aria-live="polite">
+        <li class="issue-empty">Loading issues…</li>
+      </ol>
+    </aside>
+    </div>
 
     <footer class="wrap">
       <p>© 2026 Tarmac Time</p>
     </footer>
+    <script src="gate.js" defer></script>
     <script src="join.js" defer></script>
   </body>
 </html>

@@ -11,7 +11,7 @@
     <link rel="canonical" href="https://tarmactime.com/latest/" />
     <meta
       http-equiv="refresh"
-      content="0; url=https://tarmactime-signup.tarmactime.workers.dev/latest"
+      content="0; url=/issue/?id=latest"
     />
     <meta name="theme-color" content="#0B0B0B" />
     <meta name="color-scheme" content="dark" />
@@ -29,7 +29,7 @@
     />
     <link rel="stylesheet" href="../styles.css" />
     <script>
-      location.replace("https://tarmactime-signup.tarmactime.workers.dev/latest");
+      location.replace("/issue/?id=latest" + (location.search ? "&" + location.search.slice(1) : ""));
     </script>
   </head>
   <body>
@@ -56,7 +56,7 @@
       <h1>Taking you to the <em>newest issue.</em></h1>
       <p class="lede">
         If you are not moved automatically,
-        <a href="https://tarmactime-signup.tarmactime.workers.dev/latest">read the newest issue</a>.
+        <a href="/issue/?id=latest">read the newest issue</a>.
       </p>
     </main>
   </body>

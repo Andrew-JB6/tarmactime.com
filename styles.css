@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   background: var(--ink);
 }
@@ -337,4 +341,330 @@ footer p {
   html {
     scroll-behavior: auto;
   }
+}
+
+/* ---- Past issues ---------------------------------------------------- */
+
+.issues {
+  width: min(40rem, calc(100% - 2.5rem));
+  margin: 3.25rem auto 0;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+.issues h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(1.7rem, 4vw, 2rem);
+  letter-spacing: -0.01em;
+  color: var(--gold);
+  text-align: center;
+}
+
+.issues-note {
+  margin: 0.4rem 0 0;
+  color: var(--quiet);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.issue-list {
+  list-style: none;
+  margin: 1.4rem 0 0;
+  padding: 0;
+}
+
+.issue + .issue {
+  border-top: 1px solid rgba(201, 164, 76, 0.18);
+}
+
+.issue-link {
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.35rem;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.issue-link:hover {
+  background: rgba(42, 42, 42, 0.7);
+}
+
+.issue-link:hover .issue-title {
+  color: var(--gold);
+}
+
+.issue-thumb {
+  flex: none;
+  width: 5.25rem;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border: 1px solid rgba(201, 164, 76, 0.3);
+  background: var(--grey);
+}
+
+.issue-text {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.issue-date {
+  color: var(--gold);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.issue-title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--ivory);
+  transition: color 0.15s ease;
+}
+
+.issue-sub {
+  color: var(--quiet);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.issue-empty {
+  padding: 0.85rem 0;
+  color: var(--quiet);
+  text-align: center;
+}
+
+@media (min-width: 1100px) {
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 40rem) 21rem;
+    column-gap: 4.5rem;
+    justify-content: center;
+    align-items: start;
+  }
+
+  .page .wrap,
+  .page .issues {
+    width: auto;
+    margin-inline: 0;
+  }
+
+  .issues {
+    position: sticky;
+    top: 2rem;
+    margin-top: 5.5rem;
+    padding: 1.75rem 1.4rem 1rem;
+    border: 1px solid var(--rule);
+    background: #111;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+
+  .issues h2 {
+    font-size: 1.6rem;
+    text-align: left;
+  }
+
+  .issues-note {
+    text-align: left;
+  }
+}
+
+/* ---- Gate popup -------------------------------------------------------- */
+
+.gate {
+  -webkit-tap-highlight-color: transparent;
+  width: min(28rem, calc(100% - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 1px solid var(--gold);
+  background: var(--ink);
+  color: var(--ivory);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+}
+
+.gate::backdrop {
+  background: rgba(11, 11, 11, 0.82);
+  backdrop-filter: blur(3px);
+}
+
+.gate-inner {
+  position: relative;
+  padding: 2.25rem 1.75rem 1.5rem;
+  text-align: center;
+}
+
+.gate-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.6rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  background: none;
+  color: var(--quiet);
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gate-close:hover {
+  color: var(--gold);
+}
+
+.gate-eyebrow {
+  margin: 0;
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.gate h2 {
+  margin: 0.5rem 0 0;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(1.7rem, 6vw, 2.1rem);
+  line-height: 1.15;
+}
+
+.gate h2 em {
+  font-style: italic;
+}
+
+.gate-issue {
+  margin: 0.8rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 2px solid var(--gold);
+  background: var(--grey);
+  color: var(--ivory);
+  font-family: var(--serif);
+  font-size: 1rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.gate-copy {
+  margin: 0.9rem 0 0;
+  color: var(--body);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.gate .join-form {
+  margin-top: 1.25rem;
+  text-align: left;
+}
+
+.gate-switch {
+  margin: 1rem 0 0;
+}
+
+.gate-toggle {
+  border: 0;
+  background: none;
+  color: var(--quiet);
+  font: inherit;
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.gate-toggle:hover {
+  color: var(--gold);
+}
+
+/* ---- Reader page ------------------------------------------------------- */
+
+.reader-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: min(48rem, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.reader-top img {
+  display: block;
+  width: min(13rem, 55vw);
+  height: auto;
+}
+
+.reader-top a.back {
+  color: var(--gold);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reader-top a.back:hover {
+  text-decoration: underline;
+}
+
+.reader {
+  width: min(48rem, 100%);
+  margin: 0 auto;
+}
+
+.reader-status {
+  margin: 3rem 1.25rem;
+  color: var(--body);
+  text-align: center;
+}
+
+.reader-unlock {
+  display: block;
+  margin: 0 auto 3rem;
+  min-height: 3rem;
+  padding: 0.75rem 1.5rem;
+  border: 0;
+  background: var(--gold);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.reader-frame {
+  display: block;
+  width: 100%;
+  min-height: 70vh;
+  border: 0;
+  background: var(--ink);
+}
+
+.reader-cta {
+  width: min(40rem, calc(100% - 2.5rem));
+  margin: 2rem auto 0;
+  padding-top: 2rem;
+  border-top: 1px solid var(--rule);
+  text-align: center;
+}
+
+.reader-cta a {
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 1.25rem;
 }

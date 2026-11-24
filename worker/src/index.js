@@ -20,8 +20,8 @@ function corsHeaders(request) {
   return {
     "Access-Control-Allow-Origin": origin,
     Vary: "Origin",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -264,6 +264,29 @@ export async function handleRequest(request, env, fetchImpl = fetch, cacheImpl) 
     return new Response(null, { status: 204, headers: cors });
   }
 
+  if (url.pathname === "/posts" || url.pathname === "/posts/") {
+    return handlePostsList(request, env, fetchImpl, cacheImpl);
+  }
+
+  const postMatch = url.pathname.match(/^\/post\/([^/]+)\/?$/);
+  if (postMatch) {
+    return handlePostContent(request, env, postMatch[1], fetchImpl, cacheImpl);
+  }
+
+  if (url.pathname === "/access" || url.pathname === "/access/") {
+    return handleAccess(request, env, fetchImpl);
+  }
+
+  if (url.pathname !== "/" && url.pathname !== "") {
+    return jsonResponse(request, 404, { ok: false, error: "Not found." });
+  }
+
+  if (request.method === "OPTIONS") {
+    const cors = corsHeaders(request);
+    if (!cors) return new Response(null, { status: 403 });
+    return new Response(null, { status: 204, headers: cors });
+  }
+
   const origin = request.headers.get("Origin");
   if (origin && !ALLOWED_ORIGINS.has(origin)) {
     return jsonResponse(request, 403, { ok: false, error: GENERIC_ERROR });
@@ -344,8 +367,459 @@ export async function handleRequest(request, env, fetchImpl = fetch, cacheImpl) 
     return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
   }
 
-  return jsonResponse(request, 200, { ok: true });
+  const token = await issueReadToken(env);
+  return jsonResponse(request, 200, token ? { ok: true, token } : { ok: true });
 }
+
+// ---------------------------------------------------------------------------
+// Issues list, reader gate, and gated post content
+// ---------------------------------------------------------------------------
+
+const POSTS_CACHE_SECONDS = 300;
+const POSTS_CACHE_REQUEST = new Request(
+  "https://tarmactime-signup.tarmactime.workers.dev/__posts_list_v1"
+);
+const POST_CACHE_PREFIX = "https://tarmactime-signup.tarmactime.workers.dev/__post_v1/";
+const TOKEN_LIFETIME_SECONDS = 60 * 60 * 24 * 30;
+const ACCESS_NOT_FOUND =
+  "We couldn't find an active subscription for that email. Join below to read.";
+
+function publicJson(request, status, body, cacheSeconds) {
+  const headers = {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control":
+      cacheSeconds > 0 ? "public, max-age=" + cacheSeconds : "no-store",
+    "X-Content-Type-Options": "nosniff",
+  };
+  const cors = corsHeaders(request);
+  if (cors) Object.assign(headers, cors);
+  else headers.Vary = "Origin";
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+function serverConfig(env) {
+  const publicationId = env && env.BEEHIIV_PUBLICATION_ID;
+  const apiKey = env && env.BEEHIIV_API_KEY;
+  if (!publicationIdIsSafe(publicationId) || typeof apiKey !== "string" || !apiKey.trim()) {
+    return null;
+  }
+  return { publicationId, apiKey: apiKey.trim() };
+}
+
+function isPublishedWebPost(post, nowMs) {
+  if (!post || typeof post !== "object") return false;
+  if (post.status && post.status !== "confirmed") return false;
+  const platform = post.platform;
+  if (platform !== "web" && platform !== "both") return false;
+  if (post.hidden_from_feed === true) return false;
+  if (post.audience && post.audience !== "free" && post.audience !== "both") return false;
+  const publishedAt = publishTimeMs(post);
+  if (publishedAt == null || publishedAt > nowMs) return false;
+  return isSafePostUrl(postWebUrl(post));
+}
+
+function safeImageUrl(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function cleanText(value, max) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001F\u007F]/g, " ").trim().slice(0, max);
+}
+
+function postSummary(post) {
+  return {
+    id: post.id,
+    title: cleanText(post.title, 300),
+    subtitle: cleanText(post.subtitle, 400),
+    publish_date: new Date(publishTimeMs(post)).toISOString(),
+    thumbnail_url: safeImageUrl(post.thumbnail_url),
+    slug: cleanText(post.slug, 200),
+    web_url: postWebUrl(post),
+  };
+}
+
+export function pickPublishedWebPosts(payload, nowMs = Date.now()) {
+  const posts = Array.isArray(payload && payload.data) ? payload.data : [];
+  return posts
+    .filter((post) => isPublishedWebPost(post, nowMs) && postIdIsSafe(post.id))
+    .sort((a, b) => publishTimeMs(b) - publishTimeMs(a))
+    .map(postSummary);
+}
+
+function postIdIsSafe(id) {
+  return typeof id === "string" && /^post_[0-9a-f-]{36}$/i.test(id);
+}
+
+async function cacheGetJson(cache, key) {
+  if (!cache || typeof cache.match !== "function") return null;
+  try {
+    const cached = await cache.match(key);
+    if (!cached) return null;
+    return await cached.json();
+  } catch {
+    return null;
+  }
+}
+
+async function cachePutJson(cache, key, value, seconds) {
+  if (!cache || typeof cache.put !== "function") return;
+  try {
+    await cache.put(
+      key,
+      new Response(JSON.stringify(value), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=" + seconds,
+        },
+      })
+    );
+  } catch {
+    // Cache is optional.
+  }
+}
+
+async function beehiivGet(config, path, fetchImpl) {
+  const response = await fetchImpl("https://api.beehiiv.com/v2" + path, {
+    method: "GET",
+    headers: {
+      Authorization: "Bearer " + config.apiKey,
+      Accept: "application/json",
+    },
+    signal: AbortSignal.timeout(12000),
+  });
+  return response;
+}
+
+async function loadPublishedPosts(env, fetchImpl, cache) {
+  const cached = await cacheGetJson(cache, POSTS_CACHE_REQUEST);
+  if (cached && Array.isArray(cached.posts)) {
+    return cached.posts.filter((p) => Date.parse(p.publish_date) <= Date.now());
+  }
+  const config = serverConfig(env);
+  if (!config) {
+    console.error("posts is missing its server configuration");
+    return null;
+  }
+  let response;
+  try {
+    response = await beehiivGet(
+      config,
+      "/publications/" +
+        encodeURIComponent(config.publicationId) +
+        "/posts?status=confirmed&platform=all&order_by=publish_date&direction=desc&limit=100",
+      fetchImpl
+    );
+  } catch {
+    console.error("posts request failed");
+    return null;
+  }
+  if (!response || !response.ok) {
+    console.error("posts upstream status " + (response && response.status));
+    return null;
+  }
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    return null;
+  }
+  const posts = pickPublishedWebPosts(payload);
+  await cachePutJson(cache, POSTS_CACHE_REQUEST, { posts }, POSTS_CACHE_SECONDS);
+  return posts;
+}
+
+export async function handlePostsList(request, env, fetchImpl = fetch, cacheImpl) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return publicJson(request, 405, { ok: false, error: GENERIC_ERROR }, 0);
+  }
+  const posts = await loadPublishedPosts(env, fetchImpl, getCacheStore(cacheImpl));
+  if (!posts) return publicJson(request, 502, { ok: false, error: GENERIC_ERROR }, 0);
+  return publicJson(request, 200, { ok: true, posts }, POSTS_CACHE_SECONDS);
+}
+
+// --- Read tokens -----------------------------------------------------------
+
+function base64UrlEncode(bytes) {
+  let binary = "";
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  for (let i = 0; i < view.length; i++) binary += String.fromCharCode(view[i]);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(text) {
+  const padded = text.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((text.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function hmacKey(secret) {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+function gateSecret(env) {
+  const secret = env && env.GATE_SECRET;
+  return typeof secret === "string" && secret.length >= 32 ? secret : null;
+}
+
+export async function issueReadToken(env, nowMs = Date.now()) {
+  const secret = gateSecret(env);
+  if (!secret) return null;
+  const body = base64UrlEncode(
+    new TextEncoder().encode(
+      JSON.stringify({ v: 1, exp: Math.floor(nowMs / 1000) + TOKEN_LIFETIME_SECONDS })
+    )
+  );
+  const key = await hmacKey(secret);
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return body + "." + base64UrlEncode(signature);
+}
+
+export async function verifyReadToken(env, token, nowMs = Date.now()) {
+  const secret = gateSecret(env);
+  if (!secret || typeof token !== "string" || token.length > 512) return false;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return false;
+  try {
+    const key = await hmacKey(secret);
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      base64UrlDecode(parts[1]),
+      new TextEncoder().encode(parts[0])
+    );
+    if (!valid) return false;
+    const claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
+    return (
+      claims &&
+      claims.v === 1 &&
+      typeof claims.exp === "number" &&
+      claims.exp * 1000 > nowMs
+    );
+  } catch {
+    return false;
+  }
+}
+
+function bearerToken(request) {
+  const header = request.headers.get("Authorization") || "";
+  const match = header.match(/^Bearer\s+(\S+)$/i);
+  return match ? match[1] : "";
+}
+
+// --- Existing subscriber access ---------------------------------------------
+
+export async function handleAccess(request, env, fetchImpl = fetch) {
+  const origin = request.headers.get("Origin");
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) {
+    return jsonResponse(request, 403, { ok: false, error: GENERIC_ERROR });
+  }
+  if (request.method !== "POST") {
+    return jsonResponse(request, 405, { ok: false, error: GENERIC_ERROR });
+  }
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse(request, 400, { ok: false, error: EMAIL_ERROR });
+  }
+  const email = normalizeEmail(payload && payload.email);
+  if (!isValidEmail(email)) {
+    return jsonResponse(request, 400, { ok: false, error: EMAIL_ERROR });
+  }
+  const config = serverConfig(env);
+  if (!config || !gateSecret(env)) {
+    console.error("access is missing its server configuration");
+    return jsonResponse(request, 500, { ok: false, error: GENERIC_ERROR });
+  }
+
+  let response;
+  try {
+    response = await beehiivGet(
+      config,
+      "/publications/" +
+        encodeURIComponent(config.publicationId) +
+        "/subscriptions/by_email/" +
+        encodeURIComponent(email),
+      fetchImpl
+    );
+  } catch {
+    console.error("access lookup failed");
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+
+  if (response.status === 404) {
+    try { await response.text(); } catch {}
+    return jsonResponse(request, 404, { ok: false, error: ACCESS_NOT_FOUND });
+  }
+  if (!response.ok) {
+    console.error("access upstream status " + response.status);
+    try { await response.text(); } catch {}
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+
+  let data;
+  try {
+    data = (await response.json()).data;
+  } catch {
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+  if (!data || data.status !== "active") {
+    return jsonResponse(request, 404, { ok: false, error: ACCESS_NOT_FOUND });
+  }
+  const token = await issueReadToken(env);
+  return jsonResponse(request, 200, { ok: true, token });
+}
+
+// --- Gated post content -------------------------------------------------------
+
+const REMOVE_ELEMENTS =
+  "script, noscript, iframe, frame, frameset, object, embed, applet, form, input, button, textarea, select, option, base, meta, template, portal";
+const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction", "poster", "background", "srcset", "data"]);
+
+export async function sanitizePostHtml(html) {
+  const rewriter = new HTMLRewriter()
+    .on(REMOVE_ELEMENTS, {
+      element(element) {
+        element.remove();
+      },
+    })
+    .on("link", {
+      element(element) {
+        const rel = (element.getAttribute("rel") || "").toLowerCase();
+        const href = element.getAttribute("href") || "";
+        const fontSheet = rel === "stylesheet" && href.startsWith("https://fonts.googleapis.com/");
+        const fontPreconnect = rel === "preconnect" && href.startsWith("https://fonts.gstatic.com");
+        if (!fontSheet && !fontPreconnect) element.remove();
+      },
+    })
+    .on("*", {
+      element(element) {
+        const names = [];
+        for (const [name] of element.attributes) names.push(name);
+        for (const name of names) {
+          const lower = name.toLowerCase();
+          const value = element.getAttribute(name) || "";
+          if (lower.startsWith("on")) {
+            element.removeAttribute(name);
+          } else if (
+            URL_ATTRIBUTES.has(lower) &&
+            /^\s*(javascript|vbscript|data:(?!image\/(png|jpe?g|gif|webp);))/i.test(value)
+          ) {
+            element.removeAttribute(name);
+          }
+        }
+      },
+    })
+    .on("a", {
+      element(element) {
+        element.setAttribute("target", "_blank");
+        element.setAttribute("rel", "noopener noreferrer nofollow");
+      },
+    });
+  return rewriter
+    .transform(new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }))
+    .text();
+}
+
+export async function handlePostContent(request, env, postId, fetchImpl = fetch, cacheImpl) {
+  const origin = request.headers.get("Origin");
+  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    return jsonResponse(request, 403, { ok: false, error: GENERIC_ERROR });
+  }
+  if (request.method !== "GET") {
+    return jsonResponse(request, 405, { ok: false, error: GENERIC_ERROR });
+  }
+  const cache = getCacheStore(cacheImpl);
+
+  // The newest issue is open to everyone so the welcome email's
+  // "Read the newest issue" link never hits a gate or a login wall.
+  if (postId === "latest") {
+    const posts = await loadPublishedPosts(env, fetchImpl, cache);
+    if (!posts) return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+    if (!posts.length) {
+      return jsonResponse(request, 404, { ok: false, error: "We couldn't find that issue." });
+    }
+    postId = posts[0].id;
+  } else if (!(await verifyReadToken(env, bearerToken(request)))) {
+    return jsonResponse(request, 401, { ok: false, error: "Join the list to read this issue." });
+  }
+  if (!postIdIsSafe(postId)) {
+    return jsonResponse(request, 404, { ok: false, error: "We couldn't find that issue." });
+  }
+
+  const cacheKey = new Request(POST_CACHE_PREFIX + postId.toLowerCase());
+  const cached = await cacheGetJson(cache, cacheKey);
+  if (cached && cached.id === postId) {
+    return jsonResponse(request, 200, { ok: true, post: cached });
+  }
+
+  const config = serverConfig(env);
+  if (!config) {
+    console.error("post is missing its server configuration");
+    return jsonResponse(request, 500, { ok: false, error: GENERIC_ERROR });
+  }
+
+  let response;
+  try {
+    response = await beehiivGet(
+      config,
+      "/publications/" +
+        encodeURIComponent(config.publicationId) +
+        "/posts/" +
+        encodeURIComponent(postId) +
+        "?expand%5B%5D=free_web_content",
+      fetchImpl
+    );
+  } catch {
+    console.error("post request failed");
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+  if (response.status === 404) {
+    return jsonResponse(request, 404, { ok: false, error: "We couldn't find that issue." });
+  }
+  if (!response.ok) {
+    console.error("post upstream status " + response.status);
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+
+  let post;
+  try {
+    post = (await response.json()).data;
+  } catch {
+    return jsonResponse(request, 502, { ok: false, error: GENERIC_ERROR });
+  }
+  if (!post || post.id !== postId || !isPublishedWebPost(post, Date.now())) {
+    return jsonResponse(request, 404, { ok: false, error: "We couldn't find that issue." });
+  }
+  const rawHtml =
+    post.content && post.content.free && typeof post.content.free.web === "string"
+      ? post.content.free.web
+      : "";
+  if (!rawHtml) {
+    return jsonResponse(request, 404, { ok: false, error: "We couldn't find that issue." });
+  }
+
+  const result = { ...postSummary(post), html: await sanitizePostHtml(rawHtml) };
+  await cachePutJson(cache, cacheKey, result, POSTS_CACHE_SECONDS);
+  return jsonResponse(request, 200, { ok: true, post: result });
+}
+
 
 export default {
   async fetch(request, env) {
