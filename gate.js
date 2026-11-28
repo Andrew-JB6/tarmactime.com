@@ -249,21 +249,31 @@
       text.appendChild(el("span", "issue-title", post.title));
       if (post.subtitle) text.appendChild(el("span", "issue-sub", post.subtitle));
       a.appendChild(text);
-      a.addEventListener("click", function (event) {
-        if (getToken()) return;
-        event.preventDefault();
-        openGate(post.title, function () {
-          location.href = readerUrl(post.id);
-        });
-      });
+      bindIssueLink(a);
       li.appendChild(a);
       list.appendChild(li);
+    });
+  }
+
+  function bindIssueLink(a) {
+    if (a.__ttBound) return;
+    a.__ttBound = true;
+    a.addEventListener("click", function (event) {
+      if (getToken()) return;
+      event.preventDefault();
+      var titleNode = a.querySelector(".issue-title");
+      openGate(titleNode ? titleNode.textContent : "", function () {
+        location.href = a.getAttribute("href");
+      });
     });
   }
 
   function initList() {
     var list = document.getElementById("issue-list");
     if (!list) return;
+    // Titles are already in the HTML for crawlers. Refresh them from the
+    // public list, and keep the static copy if that request fails.
+    Array.prototype.forEach.call(list.querySelectorAll("a.issue-link"), bindIssueLink);
     fetch(API + "/posts", { headers: { Accept: "application/json" } })
       .then(function (r) {
         if (!r.ok) throw new Error("posts");
@@ -273,6 +283,7 @@
         renderList(list, (data && data.posts) || []);
       })
       .catch(function () {
+        if (list.querySelector("a.issue-link")) return;
         list.textContent = "";
         var li = el("li", "issue-empty");
         li.textContent = "Issues are unavailable right now. Please try again shortly.";

@@ -63,10 +63,20 @@ Apex `A` records, all four:
 
 `https://tarmactime.com/latest` is a short address for the newest published issue. GitHub Pages serves `latest/index.html`, which sends people to the Cloudflare Worker at `/latest`. The worker looks up the newest confirmed beehiiv post that is already live on the web and redirects there. If that lookup fails, it sends people to `https://tarmactime.beehiiv.com/`.
 
+## Search
+
+The homepage and `/archive/` are the public pages. `/issue/` and `/latest/` stay `noindex`, and issue text stays behind the subscriber gate.
+
+`scripts/build-public-pages.mjs` reads the public list at `https://tarmactime-signup.tarmactime.workers.dev/posts` and writes titles, dates, and subtitles into `index.html` and `archive/index.html`, between the `issues:start` and `issues:end` comments. It also writes `sitemap.xml`. It does not request issue bodies.
+
+GitHub Actions runs that script every day, and when `main` changes the script or those pages. The workflow commits the result to `main`. In the repository settings, Actions needs permission to write to `main`. You can also run the workflow by hand from the Actions tab.
+
+`robots.txt` keeps the GitHub Pages content-signal comments, allows crawling, and names `https://tarmactime.com/sitemap.xml`.
+
 ## Test
 
 ```bash
-node --test worker/test/*.js
+node --test worker/test/*.js scripts/*.test.mjs
 ```
 
 The tests mock `fetch`. They do not call beehiiv and do not subscribe an address.
